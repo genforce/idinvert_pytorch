@@ -56,6 +56,8 @@ def parse_args():
                       help='Image size for visualization. (default: 256)')
   parser.add_argument('--gpu_id', type=str, default='0',
                       help='Which GPU(s) to use. (default: `0`)')
+  parser.add_argument('--batch_size', type=int, default=4,
+                      help='Batch size. (default: 4)')
   return parser.parse_args()
 
 
@@ -116,25 +118,33 @@ def main():
     target_image = resize_image(load_image(target_list[target_idx]),
                                 (image_size, image_size))
     visualizer.set_cell(target_idx * num_contexts, 0, image=target_image)
-    for context_idx in tqdm(range(num_contexts), desc='Context ID',
-                            leave=False):
-      row_idx = target_idx * num_contexts + context_idx
-      context_image = resize_image(load_image(context_list[context_idx]),
-                                   (image_size, image_size))
-      visualizer.set_cell(row_idx, 1, image=context_image)
+    for context_batch_idx in tqdm(range(0, num_contexts, args.batch_size),
+                            desc='Context ID', leave=False):
+      context_images = []
+      for it in range(args.batch_size):
+        context_idx = context_batch_idx + it
+        if context_idx >= num_contexts:
+          continue
+        row_idx = target_idx * num_contexts + context_idx
+        context_image = resize_image(load_image(context_list[context_idx]),
+                                     (image_size, image_size))
+        context_images.append(context_image)
+        visualizer.set_cell(row_idx, 1, image=context_image)
       code, viz_results = inverter.easy_diffuse(target=target_image,
-                                                context=context_image,
+                                                context=np.asarray(context_images),
                                                 center_x=args.center_x,
                                                 center_y=args.center_y,
                                                 crop_x=args.crop_size,
                                                 crop_y=args.crop_size,
                                                 num_viz=args.num_results)
-      for viz_idx, viz_img in enumerate(viz_results):
-        visualizer.set_cell(row_idx, viz_idx + 2, image=viz_img)
+      for key, values in viz_results.items():
+        context_idx = context_batch_idx + key
+        row_idx = target_idx * num_contexts + context_idx
+        for viz_idx, viz_img in enumerate(values):
+          visualizer.set_cell(row_idx, viz_idx + 2, image=viz_img)
       latent_codes.append(code)
 
   # Save results.
-
   os.system(f'cp {args.target_list} {output_dir}/target_list.txt')
   os.system(f'cp {args.context_list} {output_dir}/context_list.txt')
   np.save(f'{output_dir}/{job_name}_inverted_codes.npy',

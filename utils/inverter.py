@@ -254,43 +254,54 @@ class StyleGANInverter(object):
     mask[:, :, yy:yy + crop_y, xx:xx + crop_x] = 1.0
 
     target = target[np.newaxis]
-    context = context[np.newaxis]
+    if context.ndim == 3:
+      context = self.preprocess(context)[np.newaxis]
+    else:
+      contexts = []
+      for i in range(context.shape[0]):
+        contexts.append(self.preprocess(context[i]))
+      context = np.asarray(contexts)
     x = target * mask + context * (1 - mask)
     x = self.G.to_tensor(x.astype(np.float32))
     x.requires_grad = False
     mask = self.G.to_tensor(mask.astype(np.float32))
     mask.requires_grad = False
 
-    init_z = _get_tensor_value(self.E.net(x).view(1, *self.encode_dim))
+    init_z = _get_tensor_value(self.E.net(x).view(-1, *self.encode_dim))
     init_z = init_z.astype(np.float32)
     z = torch.Tensor(init_z).to(self.run_device)
     z.requires_grad = True
 
     optimizer = torch.optim.Adam([z], lr=self.learning_rate)
 
-    viz_results = []
-    viz_results.append(self.G.postprocess(_get_tensor_value(x))[0])
+    copy_and_paste = self.G.postprocess(_get_tensor_value(x))
     x_init_inv = self.G.net.synthesis(z)
-    viz_results.append(self.G.postprocess(_get_tensor_value(x_init_inv))[0])
+    encoder_out = self.G.postprocess(_get_tensor_value(x_init_inv))
+    viz_results = {}
+    for it in range(context.shape[0]):
+      viz_results[it] = []
+      viz_results[it].append(copy_and_paste[it])
+      viz_results[it].append(encoder_out[it])
+
     pbar = tqdm(range(1, self.iteration + 1), leave=True)
     for step in pbar:
       loss = 0.0
 
       # Reconstruction loss.
       x_rec = self.G.net.synthesis(z)
-      loss_pix = torch.mean(((x - x_rec) * mask) ** 2)
+      loss_pix = torch.mean(((x - x_rec) * mask) ** 2, dim=[1, 2, 3])
       loss = loss + loss_pix * self.loss_pix_weight
-      log_message = f'loss_pix: {_get_tensor_value(loss_pix):.3f}'
+      log_message = f'loss_pix: {np.mean(_get_tensor_value(loss_pix)):.3f}'
 
       # Perceptual loss.
       if self.loss_feat_weight:
         x_feat = self.F.net(x * mask)
         x_rec_feat = self.F.net(x_rec * mask)
-        loss_feat = torch.mean((x_feat - x_rec_feat) ** 2)
+        loss_feat = torch.mean((x_feat - x_rec_feat) ** 2, dim=[1, 2, 3])
         loss = loss + loss_feat * self.loss_feat_weight
-        log_message += f', loss_feat: {_get_tensor_value(loss_feat):.3f}'
+        log_message += f', loss_feat: {np.mean(_get_tensor_value(loss_feat)):.3f}'
 
-      log_message += f', loss: {_get_tensor_value(loss):.3f}'
+      log_message += f', loss: {np.mean(_get_tensor_value(loss)):.3f}'
       pbar.set_description_str(log_message)
       if self.logger:
         self.logger.debug(f'Step: {step:05d}, '
@@ -299,16 +310,18 @@ class StyleGANInverter(object):
 
       # Do optimization.
       optimizer.zero_grad()
-      loss.backward()
+      loss.backward(torch.ones_like(loss))
       optimizer.step()
 
       if num_viz > 0 and step % (self.iteration // num_viz) == 0:
-        viz_results.append(self.G.postprocess(_get_tensor_value(x_rec))[0])
+        rec_res = self.G.postprocess(_get_tensor_value(x_rec))
+        for it in range(rec_res.shape[0]):
+          viz_results[it].append(rec_res[it])
 
     return _get_tensor_value(z), viz_results
 
   def easy_diffuse(self, target, context, *args, **kwargs):
     """Wraps functions `preprocess()` and `diffuse()` together."""
     return self.diffuse(self.preprocess(target),
-                        self.preprocess(context),
+                        context,
                         *args, **kwargs)
