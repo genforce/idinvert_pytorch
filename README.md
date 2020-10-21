@@ -14,6 +14,7 @@
 [[Paper](https://arxiv.org/pdf/2004.00049.pdf)]
 [[Project Page](https://genforce.github.io/idinvert/)]
 [[Demo](https://www.youtube.com/watch?v=3v6NHrhuyFY)]
+[[Colab](https://colab.research.google.com/github/genforce/idinvert_pytorch/blob/master/docs/Idinvert.ipynb)]
 
 **NOTE:** This repository is a simple PyTorch version of [this repo](https://github.com/genforce/idinvert), and ONLY supports inference.
 
