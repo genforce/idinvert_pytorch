@@ -138,6 +138,21 @@ class StyleGANGenerator(BaseGenerator):
 
     return latent_codes.astype(np.float32)
 
+
+  def synthesizeImages(self,latent_codes,latent_space_type='Z'):
+      zs = latent_codes
+      zs = zs.to(self.run_device)
+      ws = self.net.mapping(zs)
+      ws = ws.to(self.run_device)
+      wps = self.net.truncation(ws)
+      wps = wps.to(self.run_device)
+
+      images = self.net.synthesis(wps)
+      images = images.to(self.run_device)
+
+      return images
+
+
   def _synthesize(self,
                   latent_codes,
                   latent_space_type='z',

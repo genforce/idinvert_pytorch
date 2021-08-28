@@ -14,6 +14,12 @@ MODEL_POOL = {
         'final_tanh': True,
         'use_bn': True,
     },
+    'styleganinv_ffhq256B': {
+        'resolution': 256,
+        'repeat_w': False,
+        'final_tanh': True,
+        'use_bn': True,
+    },
     'styleganinv_bedroom256': {
         'resolution': 256,
         'repeat_w': False,

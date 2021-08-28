@@ -24,10 +24,10 @@ from utils.visualizer import load_image, resize_image
 def parse_args():
   """Parses arguments."""
   parser = argparse.ArgumentParser()
-  parser.add_argument('model_name', type=str, help='Name of the GAN model.')
-  parser.add_argument('target_list', type=str,
+  parser.add_argument('--model_name', type=str, help='Name of the GAN model.')
+  parser.add_argument('--target_list', type=str,
                       help='List of target images to diffuse from.')
-  parser.add_argument('context_list', type=str,
+  parser.add_argument('--context_list', type=str,
                       help='List of context images to diffuse to.')
   parser.add_argument('-o', '--output_dir', type=str, default='',
                       help='Directory to save the results. If not specified, '

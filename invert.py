@@ -21,9 +21,12 @@ from utils.visualizer import save_image, load_image, resize_image
 def parse_args():
   """Parses arguments."""
   parser = argparse.ArgumentParser()
-  parser.add_argument('model_name', type=str, help='Name of the GAN model.')
-  parser.add_argument('image_list', type=str,
+  parser.add_argument('--model_name', type=str, help='Name of the GAN model.')
+  parser.add_argument('--image_list', type=str, default = '',
                       help='List of images to invert.')
+
+  parser.add_argument('--test_dir', type=str, default = '',
+                      help='directory of images to invert.')
   parser.add_argument('-o', '--output_dir', type=str, default='',
                       help='Directory to save the results. If not specified, '
                            '`./results/inversion/${IMAGE_LIST}` '
@@ -38,6 +41,11 @@ def parse_args():
   parser.add_argument('--loss_weight_feat', type=float, default=5e-5,
                       help='The perceptual loss scale for optimization. '
                            '(default: 5e-5)')
+
+  parser.add_argument('--loss_weight_ssim', type=float, default=1.0,
+                      help='The perceptual loss scale for optimization. '
+                           '(default: 1)')
+  
   parser.add_argument('--loss_weight_enc', type=float, default=2.0,
                       help='The encoder loss scale for optimization.'
                            '(default: 2.0)')
@@ -52,9 +60,24 @@ def main():
   """Main function."""
   args = parse_args()
   os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
-  assert os.path.exists(args.image_list)
-  image_list_name = os.path.splitext(os.path.basename(args.image_list))[0]
+  if args.image_list != '' and args.test_dir == '':
+    assert os.path.exists(args.image_list)
+    image_list_name = os.path.splitext(os.path.basename(args.image_list))[0]
+  elif args.test_dir != '' and args.image_list == '' :
+    assert os.path.exists(args.test_dir)
+    image_list_name = os.path.splitext(os.path.basename(args.test_dir))[0]
+  else:
+    raise Exception("Use either --image_list or --test_dir. Using both arguments at the same time not supported.") 
+
+
+  MODEL_DIR = os.path.join('models', 'pretrain')
+  os.makedirs(MODEL_DIR, exist_ok=True)
+  if(all(x not in os.listdir(MODEL_DIR) for x in  ["styleganinv_ffhq256_encoder.pth" , "styleganinv_ffhq256_generator.pth" , "vgg16.pth"])):
+    raise Exception("styleganinv_ffhq256_encoder.pth , styleganinv_ffhq256_generator.pth and vgg16.pth missing")
+
   output_dir = args.output_dir or f'results/inversion/{image_list_name}'
+  if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
   logger = setup_logger(output_dir, 'inversion.log', 'inversion_logger')
 
   logger.info(f'Loading model.')
@@ -65,15 +88,27 @@ def main():
       reconstruction_loss_weight=1.0,
       perceptual_loss_weight=args.loss_weight_feat,
       regularization_loss_weight=args.loss_weight_enc,
+      loss_weight_ssim = args.loss_weight_ssim,
       logger=logger)
   image_size = inverter.G.resolution
 
   # Load image list.
   logger.info(f'Loading image list.')
   image_list = []
-  with open(args.image_list, 'r') as f:
-    for line in f:
-      image_list.append(line.strip())
+  if args.image_list !='':
+
+    with open(args.image_list, 'r') as f:
+      for line in f:
+        image_list.append(line.strip())
+
+  if args.test_dir !='':
+    for root, dirs, files in os.walk(args.test_dir):
+      for file in files: 
+        image_list.append(file)
+
+
+  #print(len(image_list))
+  logger.info(f'loaded {len(image_list)} images')
 
   # Initialize visualizer.
   save_interval = args.num_iterations // args.num_results
@@ -90,10 +125,15 @@ def main():
   logger.info(f'Start inversion.')
   latent_codes = []
   for img_idx in tqdm(range(len(image_list)), leave=False):
-    image_path = image_list[img_idx]
-    image_name = os.path.splitext(os.path.basename(image_path))[0]
+    if args.image_list !='':
+      image_path = image_list[img_idx]
+      image_name = os.path.splitext(os.path.basename(image_path))[0]
+    elif args.test_dir !='':
+      image_path = os.path.join( args.test_dir, image_list[img_idx])
+      image_name = os.path.splitext(os.path.basename(image_list[img_idx]))[0]
+
     image = resize_image(load_image(image_path), (image_size, image_size))
-    code, viz_results = inverter.easy_invert(image, num_viz=args.num_results)
+    code, viz_results , ssim_loss = inverter.easy_invert(np.array(image), num_viz=args.num_results)
     latent_codes.append(code)
     save_image(f'{output_dir}/{image_name}_ori.png', image)
     save_image(f'{output_dir}/{image_name}_enc.png', viz_results[1])
@@ -102,6 +142,7 @@ def main():
     visualizer.set_cell(img_idx, 1, image=image)
     for viz_idx, viz_img in enumerate(viz_results[1:]):
       visualizer.set_cell(img_idx, viz_idx + 2, image=viz_img)
+
 
   # Save results.
   os.system(f'cp {args.image_list} {output_dir}/image_list.txt')

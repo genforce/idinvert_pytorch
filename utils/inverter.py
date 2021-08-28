@@ -10,6 +10,7 @@ import torch
 from models.stylegan_generator import StyleGANGenerator
 from models.stylegan_encoder import StyleGANEncoder
 from models.perceptual_model import PerceptualModel
+import pytorch_ssim
 
 __all__ = ['StyleGANInverter']
 
@@ -47,6 +48,7 @@ class StyleGANInverter(object):
                reconstruction_loss_weight=1.0,
                perceptual_loss_weight=5e-5,
                regularization_loss_weight=2.0,
+               loss_weight_ssim = 1.0,
                logger=None):
     """Initializes the inverter.
 
@@ -86,6 +88,7 @@ class StyleGANInverter(object):
     self.loss_pix_weight = reconstruction_loss_weight
     self.loss_feat_weight = perceptual_loss_weight
     self.loss_reg_weight = regularization_loss_weight
+    self.loss_weight_ssim = loss_weight_ssim
     assert self.loss_pix_weight > 0
 
 
@@ -181,6 +184,14 @@ class StyleGANInverter(object):
       loss = loss + loss_pix * self.loss_pix_weight
       log_message = f'loss_pix: {_get_tensor_value(loss_pix):.3f}'
 
+      # SSIM loss.
+      ssim_loss = pytorch_ssim.SSIM()
+      x_rec = self.G.net.synthesis(z)
+      ssim_out = -ssim_loss(x, x_rec)
+
+      loss = loss + ssim_out * self.loss_weight_ssim
+      log_message += f', loss_ssim: {(- ssim_out.item()):.3f}'
+
       # Perceptual loss.
       if self.loss_feat_weight:
         x_feat = self.F.net(x)
@@ -195,6 +206,8 @@ class StyleGANInverter(object):
         loss_reg = torch.mean((z - z_rec) ** 2)
         loss = loss + loss_reg * self.loss_reg_weight
         log_message += f', loss_reg: {_get_tensor_value(loss_reg):.3f}'
+
+
 
       log_message += f', loss: {_get_tensor_value(loss):.3f}'
       pbar.set_description_str(log_message)
@@ -211,7 +224,7 @@ class StyleGANInverter(object):
       if num_viz > 0 and step % (self.iteration // num_viz) == 0:
         viz_results.append(self.G.postprocess(_get_tensor_value(x_rec))[0])
 
-    return _get_tensor_value(z), viz_results
+    return _get_tensor_value(z), viz_results, - ssim_out.item()
 
   def easy_invert(self, image, num_viz=0):
     """Wraps functions `preprocess()` and `invert()` together."""
