@@ -20,11 +20,11 @@ from utils.visualizer import HtmlPageVisualizer
 def parse_args():
   """Parses arguments."""
   parser = argparse.ArgumentParser()
-  parser.add_argument('model_name', type=str, help='Name of the GAN model.')
-  parser.add_argument('image_dir', type=str,
+  parser.add_argument('--model_name', type=str, help='Name of the GAN model.')
+  parser.add_argument('--image_dir', type=str,
                       help='Image directory, which includes original images, '
                            'inverted codes, and image list.')
-  parser.add_argument('boundary_path', type=str,
+  parser.add_argument('--boundary_path', type=str,
                       help='Path to the boundary for semantic manipulation.')
   parser.add_argument('-o', '--output_dir', type=str, default='',
                       help='Directory to save the results. If not specified, '
